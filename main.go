@@ -8,12 +8,15 @@ import (
     "github.com/gorilla/websocket"
 )
 
+// estrutura do websocket
 var upgrader = websocket.Upgrader{
     CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// cada frequência é uma “sala”
 var rooms = make(map[string][]*websocket.Conn)
 
+// gerencia as conexões
 func handleConnections(w http.ResponseWriter, r *http.Request) {
     freq := r.URL.Query().Get("freq")
     if freq == "" {
@@ -29,7 +32,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
     defer conn.Close()
 
     rooms[freq] = append(rooms[freq], conn)
-    log.Println("Novo usuário entrou na frequência:", freq)
+    log.Println("Usuário conectado na frequência:", freq)
 
     for {
         _, msg, err := conn.ReadMessage()
@@ -38,6 +41,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
             break
         }
 
+        // retransmite a mensagem pra todos na mesma frequência
         for _, c := range rooms[freq] {
             if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
                 log.Println("Erro ao enviar:", err)
