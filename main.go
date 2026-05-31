@@ -11,11 +11,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Client struct {
-	Conn *websocket.Conn
-	Room string
-}
-
 type Message struct {
 	Name    string `json:"name"`
 	Message string `json:"message"`
@@ -70,10 +65,13 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		mutex.Lock()
-		delete(rooms[freq], conn)
 
-		if len(rooms[freq]) == 0 {
-			delete(rooms, freq)
+		if rooms[freq] != nil {
+			delete(rooms[freq], conn)
+
+			if len(rooms[freq]) == 0 {
+				delete(rooms, freq)
+			}
 		}
 
 		mutex.Unlock()
@@ -92,13 +90,27 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var received Message
+
 		err = json.Unmarshal(msg, &received)
 		if err != nil {
 			log.Println("Mensagem inválida:", err)
 			continue
 		}
 
-		received.Type = "message"
+		// IMPORTANTE:
+		// Não forçar received.Type = "message",
+		// porque isso quebrava as mensagens criptografadas.
+		if received.Type == "" {
+			received.Type = "message"
+		}
+
+		if received.Name == "" {
+			received.Name = name
+		}
+
+		if received.Message == "" {
+			continue
+		}
 
 		broadcast(freq, received)
 	}
@@ -124,6 +136,10 @@ func broadcast(freq string, msg Message) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
+	if rooms[freq] == nil {
+		return
+	}
+
 	for conn := range rooms[freq] {
 		err := conn.WriteMessage(websocket.TextMessage, data)
 		if err != nil {
@@ -131,6 +147,10 @@ func broadcast(freq string, msg Message) {
 			conn.Close()
 			delete(rooms[freq], conn)
 		}
+	}
+
+	if len(rooms[freq]) == 0 {
+		delete(rooms, freq)
 	}
 }
 
